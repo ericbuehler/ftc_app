@@ -19,15 +19,21 @@ public class T6288ManOp extends OpMode {
     final static double MIN_MOTOR_PWR = -1.0; //Never let the motor go beyond this
     final static double MAX_MOTOR_PWR_SOFT = 0.4; //This is our soft limit (without override)
     final static double MIN_MOTOR_PWR_SOFT = -0.4; //This is our soft limit (without override)
-    final static double MAX_DRIVE_PWR_RATIO_SOFT = MAX_MOTOR_PWR_SOFT; //We shouldn't drive any faster than this
-    final static double MIN_DRIVE_PWR_RATIO_SOFT = MIN_MOTOR_PWR_SOFT; //We shouldn't drive any faster than this
+    final static double MAX_DRIVE_PWR_RATIO_SOFT = MAX_MOTOR_PWR; //We shouldn't drive any faster than this
+    final static double MIN_DRIVE_PWR_RATIO_SOFT = MIN_MOTOR_PWR; //We shouldn't drive any faster than this
+    final static double ARM1_EXTEND_RATE = 1.0; //This is how fast we extend the arm
+    final static double ARM2_EXTEND_RATE = 1.0; //This is how fast we extend the arm
+    // Turns out that the second arm needs more power to extend (maybe mechanical binding)
+
 
     //For joystick centering threshold
     final static double MAX_ABS_JOY_ZERO = 0.05; //This value is close enough to zero
 
     //For servo reset position
-    final static double ROBOT_LIFT_SERVO_LEFT_START = 0.0; //TODO: Make sure this is correct
-    final static double ROBOT_LIFT_SERVO_RIGHT_START = 0.0; //TODO: Make sure this is correct
+    final static double ROBOT_LIFT_SERVO_LEFT_START = 0.75; //TODO: Make sure this is correct
+    final static double ROBOT_LIFT_SERVO_RIGHT_START = 1.0; //TODO: Make sure this is correct
+    final static double ROBOT_LIFT_SERVO_LEFT_END = 0.5; //TODO: Make sure this is correct
+    final static double ROBOT_LIFT_SERVO_RIGHT_END = 0.75; //TODO: Make sure this is correct
 
     //We want to add a timer here so that we can see how much time we have left
     private String startDate;
@@ -68,6 +74,8 @@ public class T6288ManOp extends OpMode {
     float armLower = 0;
     boolean armExtend = false;
     boolean armRetract = false;
+    boolean switchArm = false;
+    boolean killArm = false;
 
     //For driving the lift
     boolean servoReset = false;
@@ -86,21 +94,21 @@ public class T6288ManOp extends OpMode {
         driverMotor = hardwareMap.dcMotor.get(driverMotorName);
         driverMotor.setDirection(DcMotor.Direction.FORWARD); //TODO: Make sure it is correct
         passengerMotor = hardwareMap.dcMotor.get(passengerMotorName);
-        passengerMotor.setDirection(DcMotor.Direction.FORWARD); //TODO: Make sure it is correct
+        passengerMotor.setDirection(DcMotor.Direction.REVERSE); //TODO: Make sure it is correct
 //        //Motor Controllers
 //        driveController = hardwareMap.dcMotorController.get(driveControllerName);
         //Moving the arm
         armLiftMotor = hardwareMap.dcMotor.get(armLiftMotorName);
-        armLiftMotor.setDirection(DcMotor.Direction.FORWARD); //TODO: Make sure it is correct
+        armLiftMotor.setDirection(DcMotor.Direction.FORWARD);
         armExtendMotor1 = hardwareMap.dcMotor.get(armExtendMotor1Name);
-        armExtendMotor1.setDirection(DcMotor.Direction.FORWARD); //TODO: Make sure it is correct
+        armExtendMotor1.setDirection(DcMotor.Direction.FORWARD);
         armExtendMotor2 = hardwareMap.dcMotor.get(armExtendMotor2Name);
-        armExtendMotor2.setDirection(DcMotor.Direction.FORWARD); //TODO: Make sure it is correct
+        armExtendMotor2.setDirection(DcMotor.Direction.FORWARD);
         //Lifting the robot
         robotLiftServoLeft = hardwareMap.servo.get(robotLiftServoLeftName);
-        robotLiftServoLeft.setDirection(Servo.Direction.FORWARD); //TODO: Make sure it is correct
+        robotLiftServoLeft.setDirection(Servo.Direction.FORWARD);
         robotLiftServoRight = hardwareMap.servo.get(robotLiftServoRightName);
-        robotLiftServoRight.setDirection(Servo.Direction.FORWARD); //TODO: Make sure it is correct
+        robotLiftServoRight.setDirection(Servo.Direction.REVERSE);
     }
 
     /*
@@ -153,7 +161,7 @@ public class T6288ManOp extends OpMode {
     /*
      * This function will drive the arm
      */
-    public void set_arm_drive(double armLift, double armExtend, boolean killArm = false) {
+    public void set_arm_drive(double armLift, double armExtend) {
         //TODO: will need to figure out how to keep the arm at a single position
 
         //This shuts down the motors (saves battery)
@@ -161,19 +169,33 @@ public class T6288ManOp extends OpMode {
             //TODO: Need to reset the hold variable to nothing
             armLiftMotor.setPower(0.0);
         } else { //You really want to do some lifting
-            armLiftMotor.
+            //TODO: This really won't work until we have an encoder to determine the angle of the
+            // arm so that we know how much power to keep on it
+            armLiftMotor.setPower(armLift * MAX_MOTOR_PWR_SOFT);
         }
+
+        //Extend the arm
+        if (selectArm) { //Asked for the second arm to extend
+            armExtendMotor1.setPower(0.0);
+            armExtendMotor2.setPower(armExtend * ARM2_EXTEND_RATE); //Extend a preset rate
+        } else { //Asked for the first arm to extend
+            armExtendMotor1.setPower(armExtend * ARM1_EXTEND_RATE); //Extend a preset rate
+            armExtendMotor2.setPower(0.0);
+        }
+
     }
 
     /*
      * This function is pretty simple to move the servo in a direction to lift
      * the robot up
      */
-    public void set_servo_drive(boolean servoUp = false) {
+    public void set_servo_drive(boolean servoUp) {
         if (servoUp) {
-
+            robotLiftServoLeft.setPosition(ROBOT_LIFT_SERVO_LEFT_START);
+            robotLiftServoRight.setPosition(ROBOT_LIFT_SERVO_RIGHT_START);
         } else {
-
+            robotLiftServoLeft.setPosition(ROBOT_LIFT_SERVO_LEFT_END);
+            robotLiftServoRight.setPosition(ROBOT_LIFT_SERVO_RIGHT_END);
         }
     }
     /*
@@ -183,7 +205,9 @@ public class T6288ManOp extends OpMode {
         //Stop all driving motors
         set_robot_drive(0,0);
         //Stop all arm motors
-        set_arm_drive(0,0,1);
+        killArm = true;
+        set_arm_drive(0,0);
+        killArm = false;
     }
 
     /*
@@ -197,6 +221,11 @@ public class T6288ManOp extends OpMode {
         robot_read_layout(); //Set up the objects
         robot_halt(); //Turn off any running motors
         robot_state_reset(); //Reset the servos
+        //Print out some information on what we are going forward with
+        telemetry.addData("State:", "DP:" + drivePower + "DB:" + driveBalance +
+                "AS:" + selectArm + "AL:" + driveArmLift + "AE:" + driveArmExtend +
+                "SL:" + robotLiftServoLeft.getPosition() + "SR:" + robotLiftServoRight.getPosition());
+
     }
 
     /*
@@ -228,27 +257,51 @@ public class T6288ManOp extends OpMode {
         armLower = gamepad1.left_trigger; //Use this to lower the arm
         armExtend = gamepad1.right_bumper; //Use this to extend arm1 or arm2
         armRetract = gamepad1.left_bumper; //Use this to retract arm1 or arm2
-        selectArm = gamepad1.a; //Use this to select which extending arm
+        switchArm = gamepad1.a; //Use this to select which extending arm
         servoReset = gamepad1.x; //This is to reset the servo down
         servoDown = gamepad1.y; //This is to swing the servo down
         servoUp = gamepad1.b; //This is to swing the servo up
 
-        telemetry.addData("Joy: ", "y:" + drivePower + "x:" + driveBalance + "a:" );
+        telemetry.addData("Joy: ", "Y:" + drivePower + "X:" + driveBalance + "a:" +
+                selectArm + "x:" + servoReset + "y:" + servoDown + "b:" + servoUp);
 
-        //Servo priorities
-        if (servoReset) {
-            servo_state_reset();
-        } else if (servoUp) {
-            set_servo_drive(true);
-        } else if (servoDown) {
-            set_servo_drive(false);
+        //Arm Selection
+        if (switchArm) {
+            selectArm = !selectArm; //This alternates between arms chosen based upon the button press
         }
 
         //Arm Priorities
-        if ()
+        if (armRetract) {
+            driveArmExtend = -1.0;
+        } else if (armExtend) {
+            driveArmExtend = 1.0;
+        } else {
+            driveArmExtend = 0.0;
+        }
+        if (armLower > 0) {
+            driveArmLift = -armLower;
+        } else if (armRaise > 0) {
+            driveArmLift = armRaise;
+        } else {
+            driveArmLift = 0.0;
+        }
+
+        //Print out some information on what we are going forward with
+        telemetry.addData("State:", "DP:" + drivePower + "DB:" + driveBalance +
+                "AS:" + selectArm + "AL:" + driveArmLift + "AE:" + driveArmExtend +
+                "SL:" + robotLiftServoLeft.getPosition() + "SR:" + robotLiftServoRight.getPosition());
+
+        //Servo priorities
+        if (servoReset) { //Reset is the most important servo button
+            servo_state_reset();
+        } else if (servoUp) { //Moving up is the second most important (assuming to get out of the way)
+            set_servo_drive(true);
+        } else if (servoDown) { //Moving down is next (could block and is intentional)
+            set_servo_drive(false);
+        }
 
         //Lift the arm
-        set_arm_drive(driveArmLift, driveArmExtend, 0);
+        set_arm_drive(driveArmLift, driveArmExtend);
         //Drive the robot
         set_robot_drive(drivePower, driveBalance);
     }
